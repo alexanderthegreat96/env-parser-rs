@@ -1,0 +1,16 @@
+[package]
+name = "env_parser"
+authors = ["alexanderthegreat96"]
+version = "0.1.0"
+edition = "2024"
+description = "A lightweight, type-safe environment file parser."
+license = "MIT"
+repository = "https://github.com/alexanderthegreat96/env-parser-rs"
+readme = "README.md"
+keywords = ["env", "parser", "config"]
+categories = ["config", "parsing"]
+
+[dependencies]
+
+[dev-dependencies]
+tempfile = "3"

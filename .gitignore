@@ -1,0 +1,35 @@
+# --- Compilation Artifacts ---
+# The directory where Cargo stores all compiled code and dependencies.
+# This can grow to several gigabytes and should NEVER be committed.
+/target/
+
+# --- IDEs and Editors ---
+# JetBrains / IntelliJ / RustRover
+.idea/
+*.iml
+
+# VS Code
+.vscode/
+# Keep settings.json if you want to share workspace settings, 
+# but usually it's better to keep it local.
+# !.vscode/settings.json
+
+# Vim swap files
+*.swp
+*~
+
+# --- Environment and Logs ---
+# Ignore the actual .env file containing secrets (API keys, etc.)
+.env
+.env.*
+# But DO commit .env.example if you have one!
+!.env.example
+
+# Cargo-generated log files
+cargo-timing.bin
+
+# --- Dependency Locks ---
+# For BINARY projects, you SHOULD commit Cargo.lock.
+# For LIBRARY projects (like a crate for crates.io), it is often ignored,
+# though modern guidance suggests committing it for consistent CI builds.
+# Cargo.lock
