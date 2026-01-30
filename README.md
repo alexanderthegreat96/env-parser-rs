@@ -1,112 +1,157 @@
-# EnvParser
+# 🦀 env_parser_rs
 
-A lightweight, type-safe environment variable parser for Rust. While designed with `.env` files in mind, **EnvParser can parse any configuration file that utilizes standard environment variable syntax** (e.g., `.conf`, `.ini` style key-value pairs, or custom config files).
+A lightweight, type-safe environment variable and configuration parser for Rust.
 
-It supports standard scalars (Strings, Integers, Booleans) as well as complex structures like Lists and Dictionaries directly from your configuration files.
+`env_parser_rs` is designed to be efficient, easy to use and dependency free. While it excels at `.env` files, it can parse any configuration file using standard `KEY=VALUE` syntax (like `.conf` or `.ini` styles). It handles normalization, stripping quotes, and converting raw strings into usable Rust types—including Lists and HashMaps—with a single method call.
 
-## Features
+## ✨ Features
 
-- **Universal Syntax Support**: Works with `.env`, `.conf`, or any plain-text file using `KEY=VALUE` formatting.
+- **🚀 Type-Safe Retrieval**: Parse directly into `i32`, `f64`, `bool`, `Vec<String>`, or `HashMap<String, String>`.
     
-- **Type-Safe Retrieval**: Parse variables directly into `i32`, `f64`, `bool`, etc.
+- **📂 Universal Syntax**: Works with `.env`, `.conf`, or any plain-text file using `KEY=VALUE` formatting.
     
-- **Complex Structures**: Support for arrays `[a, b, c]` and dictionaries `{key:val}`.
+- **🔡 Case-Insensitive**: Keys are automatically normalized to uppercase for robust lookups.
     
-- **Normalization**: Automatic key normalization (case-insensitivity).
+- **📦 Complex Structures**: Native support for arrays `[a, b, c]` and dictionaries `{key: val}`.
     
-- **Debug Mode**: Optional verbose logging for missing keys or parsing errors.
+- **🛡️ Robust Parsing**: Handles comments (`#`), extra whitespace, and quoted values (`"..."` or `'...'`).
     
-- **Robustness**: Handles comments, whitespace, and quoted values (`"like this"` or `'this'`).
+- **🔍 Debug Mode**: Optional verbose logging to help track down missing keys or parsing errors.
     
 
-## Installation
+## 💾 Installation
 
-Add this to your `Cargo.toml`:
+Add the following to your `Cargo.toml`:
 
-```
+```toml
 [dependencies]
-env_parser_rs = "0.1.0"
+env_parser_rs = "0.1.1"
 ```
 
-## Quick Start
+## 📖 Data Formats & Usage
 
-Create a configuration file (e.g., `app.conf`):
+|Type|Syntax in File|Method|Description|
+|---|---|---|---|
+|**String**|`NAME="Rust Parser"`|`.get_str("NAME")`|Returns `Option<String>`|
+|**Integer**|`PORT=8080`|`.get_int::<i32>("PORT")`|Supports any `FromStr` integer|
+|**Float**|`RATE=1.23`|`.get_float::<f64>("RATE")`|Supports any `FromStr` float|
+|**Boolean**|`DEBUG=on`|`.get_bool("DEBUG")`|Supports `true/1/yes/on` and `false/0/no/off`|
+|**List**|`TAGS=[a, b, c]`|`.get_list("TAGS")`|Returns `Option<Vec<String>>`|
+|**Map**|`META={v:1, env:dev}`|`.get_dict("META")`|Returns `Option<HashMap<String, String>>`|
 
-```
+## 🚀 Quick Start
+
+### 1. Create your config (`app.conf`)
+
+```env
+# Server Configuration
 PORT=8080
-DEBUG=true
-ALLOWED_HOSTS=[localhost, 127.0.0.1]
-DATABASE_CONFIG={timeout:30, pool:5}
+BASE_URL="[https://api.example.com](https://api.example.com)"
+
+# Feature Flags
+ENABLE_LOGS=yes
+MAX_RETRIES=5
+
+# Complex Data
+ALLOWED_IPS=[127.0.0.1, 192.168.1.1]
+DATABASE={host:localhost, port:5432, user:admin}
 ```
 
-Use it in your Rust code:
+### 2. Parse in Rust
 
-```
-use env_parser::{EnvParser, Types};
+```rust
+use env_parser_rs::{EnvParser, Types};
 
 fn main() {
-    // Initialize and parse automatically from any file path
+    // 1. Initialize and parse immediately
     let parser = EnvParser::from_file("app.conf", true);
 
-    // 1. Get simple types
-    let port = parser.get_int::<i32>("PORT").unwrap_or(3000);
-    let is_debug = parser.get_bool("debug").unwrap_or(false);
-
-    // 2. Get lists
-    if let Some(hosts) = parser.get_list("ALLOWED_HOSTS") {
-        for host in hosts {
-            println!("Allowed: {}", host);
-        }
+    // 2. Simple Scalars
+    let port = parser.get_int::<i32>("PORT").expect("Port is required");
+    let is_enabled = parser.get_bool("ENABLE_LOGS").unwrap_or(false);
+    
+    // 3. Working with Lists
+    if let Some(ips) = parser.get_list("ALLOWED_IPS") {
+        println!("Whitelist size: {}", ips.len());
     }
 
-    // 3. Get dictionaries
-    if let Some(db_conf) = parser.get_dict("DATABASE_CONFIG") {
-        println!("DB Timeout: {}", db_conf.get("timeout").unwrap());
+    // 4. Working with Dictionaries
+    if let Some(db) = parser.get_dict("DATABASE") {
+        let db_host = db.get("host").unwrap();
+        println!("Connecting to: {}", db_host);
     }
 
-    // 4. Use the dynamic dispatcher
-    use env_parser::AnyValue;
-    if let Some(AnyValue::Int(val)) = parser.get_value("PORT", Types::Int) {
-        println!("Dynamic port: {}", val);
-    }
+    // 5. Visualize everything
+    parser.print_contents();
 }
 ```
 
-## Data Formats Supported
+## 🛠️ API Reference
 
-|Format|Example|Retrieval Method|
+### Initialization Methods
+
+|Method|Parameters|Returns|Description|
+|---|---|---|---|
+|`from_file`|`path: P, debug: bool`|`Self`|Creates a parser and attempts to read/parse the file immediately.|
+|`get_error`|None|`Option<&dyn Error>`|Returns the last error encountered during file reading or parsing.|
+
+### Retrieval Methods
+
+All retrieval methods are case-insensitive regarding the `key`.
+
+|Method|Returns|Notes|
 |---|---|---|
-|**String**|`NAME="App"`|`get_str("NAME")`|
-|**Integer**|`PORT=8080`|`get_int::<i32>("PORT")`|
-|**Boolean**|`ACTIVE=yes`|`get_bool("ACTIVE")` (Supports true/1/yes/on)|
-|**List**|`TAGS=[a,b]`|`get_list("TAGS")`|
-|**Dictionary**|`MAP={a:1,b:2}`|`get_dict("MAP")`|
+|`get_str(key)`|`Option<String>`|Clones the internal value.|
+|`get_int<T>(key)`|`Option<T>`|Where `T` implements `FromStr`.|
+|`get_float<T>(key)`|`Option<T>`|Where `T` implements `FromStr`.|
+|`get_bool(key)`|`Option<bool>`|Truthy: `true`, `1`, `yes`, `on`. Falsy: `false`, `0`, `no`, `off`.|
+|`get_list(key)`|`Option<Vec<String>>`|Handles both `[a,b]` and `a,b` syntax. Strips quotes from items.|
+|`get_dict(key)`|`Option<HashMap<String, String>>`|Parses `{k:v}` pairs separated by commas.|
+|`get_value(key, Types)`|`Option<AnyValue>`|Useful for dynamic dispatch or pattern matching.|
 
-## API Reference
+### Utility Methods
 
-### `EnvParser::from_file(path, is_debug)`
+- `print_contents()`: Outputs a formatted table of all loaded variables to `stdout`.
+    
+- `get_data()`: Returns a reference to the internal `HashMap<String, String>`.
+    
 
-Creates a new parser and immediately reads the file at `path`. This can be a `.env` file or any configuration file using `=` as a delimiter.
+## 🧪 Advanced Examples
 
-### `get_int<T>(key)`
+### Dynamic Dispatch with `AnyValue`
 
-Generic method to parse any type that implements `FromStr`.
+If you don't know the type at compile time or want to handle multiple types in a single logic flow:
 
-### `get_value(key, Types)`
+```rust
+use env_parser_rs::{AnyValue, Types};
 
-Returns an `AnyValue` enum variant, useful for dynamic processing or logging.
+let val = parser.get_value("TIMEOUT", Types::Int);
 
-### `print_contents()`
+match val {
+    Some(AnyValue::Int(i)) => println!("Numeric timeout: {}", i),
+    Some(AnyValue::Text(s)) => println!("String timeout: {}", s),
+    _ => println!("Value not found or incompatible"),
+}
+```
 
-Pretty-prints the entire loaded configuration to the console in a table format.
+### Display Trait
 
-## Development
-
-Run tests using:
+You can print the `EnvParser` instance directly to see the file status and contents:
 
 ```
+let parser = EnvParser::from_file(".env", false);
+println!("{}", parser);
+```
+
+## 🛠 Development & Testing
+
+The library is heavily tested to ensure edge cases (like nested quotes or mixed casing) are handled correctly.
+
+```
+# Run all tests
 cargo test
 ```
 
-## License
-MIT
+## 📜 License
+
+This project is licensed under the MIT License.

@@ -39,37 +39,38 @@ pub struct EnvParser {
 }
 
 impl EnvParser {
-    pub fn new<P: AsRef<Path>>(file_path: P, is_debug: bool) -> Self {
-        EnvParser {
-            file_path: file_path.as_ref().to_path_buf(),
-            env_contents: None,
-            is_debug,
-            last_error: None,
-        }
-    }
-
     pub fn from_file<P: AsRef<Path>>(file_path: P, is_debug: bool) -> Self {
         let mut parser: EnvParser = Self::new(file_path, is_debug);
         parser.parse();
         return parser;
     }
 
+    // grabs the last error
     pub fn get_error(&self) -> Option<&dyn Error> {
         return self.last_error.as_deref();
     }
 
+    // retrieves the entire data set as a hashmap
     pub fn get_data(&self) -> Option<&HashMap<String, String>> {
         self.env_contents.as_ref()
     }
 
+    // get the value as string
     pub fn get_str(&self, key: &str) -> Option<String> {
         return self.get(key).cloned();
     }
 
+    // get the value as int
     pub fn get_int<T: std::str::FromStr>(&self, key: &str) -> Option<T> {
         return self.get(key)?.parse::<T>().ok();
     }
 
+    // get the value as float
+    pub fn get_float<T: std::str::FromStr>(&self, key: &str) -> Option<T> {
+        return self.get(key)?.parse::<T>().ok();
+    }
+
+    // get the value as bool
     pub fn get_bool(&self, key: &str) -> Option<bool> {
         let val = self.get(key)?.to_lowercase();
         match val.as_str() {
@@ -79,6 +80,7 @@ impl EnvParser {
         }
     }
 
+    // get the value as a vector / slice / list
     pub fn get_list(&self, key: &str) -> Option<Vec<String>> {
         let val = self.get(key)?;
         let val = val.trim();
@@ -102,6 +104,7 @@ impl EnvParser {
         if list.is_empty() { None } else { Some(list) }
     }
 
+    // get the value as a dict
     pub fn get_dict(&self, key: &str) -> Option<HashMap<String, String>> {
         let val = self.get(key)?;
         let val = val.trim();
@@ -125,6 +128,7 @@ impl EnvParser {
         if map.is_empty() { None } else { Some(map) }
     }
 
+    // get the value as a specific type
     pub fn get_value(&self, key: &str, convert_to: Types) -> Option<AnyValue> {
         match convert_to {
             Types::Int | Types::Integer => self.get_int::<i64>(key).map(AnyValue::Int),
@@ -138,6 +142,7 @@ impl EnvParser {
         }
     }
 
+    // prints the contents of the env file
     pub fn print_contents(&self) -> () {
         println!("{:<20} | {:<20}", "VARIABLE", "VALUE");
         println!("{}", "-".repeat(43));
@@ -164,7 +169,16 @@ impl EnvParser {
         println!("{}", "-".repeat(43));
     }
 
-    pub fn parse(&mut self) {
+    fn new<P: AsRef<Path>>(file_path: P, is_debug: bool) -> Self {
+        EnvParser {
+            file_path: file_path.as_ref().to_path_buf(),
+            env_contents: None,
+            is_debug,
+            last_error: None,
+        }
+    }
+
+    fn parse(&mut self) {
         let mut file = match File::open(&self.file_path) {
             Ok(f) => f,
             Err(e) => {
@@ -226,6 +240,9 @@ impl EnvParser {
     }
 }
 
+// allows you to print the var assigned to EnvParser::from_file
+// directly
+// which will output the contents if found
 impl std::fmt::Display for EnvParser {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "EnvParser: (file: {})\n", self.file_path.display())?;
@@ -268,17 +285,61 @@ mod tests {
     }
 
     #[test]
+    fn test_case_integers() {
+        let file: NamedTempFile = create_test_env("port=8080\ninvalidations=\"18\"");
+        let parser: EnvParser = EnvParser::from_file(file.path(), true);
+
+        assert_eq!(parser.get_int::<i32>("port"), Some(8080));
+        assert_eq!(parser.get_int::<i32>("invalidations"), Some(18));
+    }
+
+    #[test]
+    fn test_case_floats() {
+        let file: NamedTempFile = create_test_env("exchange_rate=16.2\ndivisions=\"13.1\"");
+        let parser: EnvParser = EnvParser::from_file(file.path(), true);
+
+        assert_eq!(parser.get_float::<f64>("exchange_rate"), Some(16.2));
+        assert_eq!(parser.get_int::<f64>("divisions"), Some(13.1));
+    }
+
+    #[test]
+    fn test_case_bools() {
+        let file: NamedTempFile =
+            create_test_env("has_data=yes\nis_male=no\nis_debug=true\nhas_active_users=\"no\"");
+        let parser: EnvParser = EnvParser::from_file(file.path(), true);
+
+        assert_eq!(parser.get_bool("has_data"), Some(true));
+        assert_eq!(parser.get_bool("is_male"), Some(false));
+        assert_eq!(parser.get_bool("is_debug"), Some(true));
+        assert_eq!(parser.get_bool("has_active_users"), Some(false));
+    }
+
+    #[test]
+    fn test_case_string() {
+        let file: NamedTempFile = create_test_env("first_name=mike\nlast_name=dotnet");
+        let parser: EnvParser = EnvParser::from_file(file.path(), false);
+
+        assert_eq!(parser.get_str("first_name"), Some("mike".to_string()));
+        assert_eq!(parser.get_str("last_name"), Some("dotnet".to_string()));
+    }
+
+    #[test]
     fn test_case_insensitivity() {
-        let file = create_test_env("port=8080\nAPI_KEY=secret123");
+        let file: NamedTempFile =
+            create_test_env("port=8080\nAPI_KEY=secret123\nEXCHANGE_RATE=12.2\nIS_DEBUG=false");
         let parser = EnvParser::from_file(file.path(), false);
 
         assert_eq!(parser.get_int::<i32>("port"), Some(8080));
         assert_eq!(parser.get_str("api_key"), Some("secret123".to_string()));
+        assert_eq!(parser.get_float::<f64>("exchange_rate"), Some(12.2));
+        assert_eq!(parser.get_bool("is_debug"), Some(false));
     }
 
     #[test]
     fn test_complex_types() {
-        let file = create_test_env("FLAGS=[run,build,test]\nMETADATA={version:1.0, env:prod}");
+        let file = create_test_env(
+            "FLAGS=[run,build,test]\nMETADATA={version:1.0, env:prod, is_debug: true}",
+        );
         let parser = EnvParser::from_file(file.path(), false);
 
         let list = parser.get_list("FLAGS").unwrap();
@@ -287,6 +348,7 @@ mod tests {
         let dict = parser.get_dict("METADATA").unwrap();
         assert_eq!(dict.get("version").unwrap(), "1.0");
         assert_eq!(dict.get("env").unwrap(), "prod");
+        assert_eq!(dict.get("is_debug").unwrap(), "true");
     }
 
     #[test]
