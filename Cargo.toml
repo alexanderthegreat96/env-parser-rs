@@ -1,5 +1,5 @@
 [package]
-name = "env_parser"
+name = "env_parser_rs"
 authors = ["alexanderthegreat96"]
 version = "0.1.0"
 edition = "2024"

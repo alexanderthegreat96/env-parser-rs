@@ -25,7 +25,7 @@ Add this to your `Cargo.toml`:
 
 ```
 [dependencies]
-env_parser = "0.1.0"
+env_parser_rs = "0.1.0"
 ```
 
 ## Quick Start
