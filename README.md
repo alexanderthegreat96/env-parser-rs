@@ -25,7 +25,7 @@ Add the following to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-env_parser_rs = "0.2.0"
+env_parser_rs = "0.2.1"
 ```
 
 ## 📖 Data Formats & Usage
@@ -65,10 +65,12 @@ use std::error::Error;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let parser = EnvParser::from_file("app.conf", true)?;
-
+    
+    let app_mame: String = parser.get_str("APP_NAME").expect("app name is required");
     let port: i32 = parser.get_int("PORT").expect("port is required");
     let is_enabled: bool = parser.get_bool("ENABLE_LOGS").unwrap_or(false);
-    
+    let conversion_rate: f64 = parser.get_float("CONVERSION_RATE").expect("conversion rate is requied");
+
     if let Some(ips) = parser.get_list("ALLOWED_IPS") {
         println!("whitelist size: {}", ips.len());
     }
@@ -81,7 +83,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     if let Some(val) = parser.get_value("TIMEOUT", Types::Float) {
         println!("parsed value: {:?}", val);
     }
-    parser.print_contents();
+
+    parser.print_contents(); // standard print
+    println("{}", parser); // you can also print your config contents using this
     Ok(())
 }
 ```
@@ -108,6 +112,8 @@ All retrieval methods are case-insensitive regarding the `key`.
 |`get_list(key)`|`Option<Vec<String>>`|Handles both `[a,b]` and `a,b` syntax. Strips quotes from items.|
 |`get_dict(key)`|`Option<HashMap<String, String>>`|Parses `{k:v}` pairs separated by commas.|
 |`get_value(key, Types)`|`Option<AnyValue>`|Useful for dynamic dispatch or pattern matching.|
+|`get_data()`|`Option<HashMap<String, String>> `|Get the entire contents of the config file and process them manually.|
+
 
 ### Utility Methods
 
