@@ -30,24 +30,18 @@ pub enum Types {
     Dictionary,
     Map,
 }
-
+#[derive(Debug)]
 pub struct EnvParser {
     file_path: PathBuf,
     env_contents: Option<HashMap<String, String>>,
     is_debug: bool,
-    last_error: Option<Box<dyn Error>>,
 }
 
 impl EnvParser {
-    pub fn from_file<P: AsRef<Path>>(file_path: P, is_debug: bool) -> Self {
+    pub fn from_file<P: AsRef<Path>>(file_path: P, is_debug: bool) -> Result<Self, Box<dyn Error>> {
         let mut parser: EnvParser = Self::new(file_path, is_debug);
-        parser.parse();
-        return parser;
-    }
-
-    // grabs the last error
-    pub fn get_error(&self) -> Option<&dyn Error> {
-        return self.last_error.as_deref();
+        parser.parse()?;
+        Ok(parser)
     }
 
     // retrieves the entire data set as a hashmap
@@ -142,64 +136,49 @@ impl EnvParser {
         }
     }
 
-    // prints the contents of the env file
-    pub fn print_contents(&self) -> () {
+    pub fn print_contents(&self) {
         println!("{:<20} | {:<20}", "VARIABLE", "VALUE");
         println!("{}", "-".repeat(43));
 
-        match &self.env_contents {
-            Some(data) if !data.is_empty() => {
+        if let Some(data) = &self.env_contents {
+            if data.is_empty() {
+                println!("(no variables found in file)");
+            } else {
                 let mut keys: Vec<&String> = data.keys().collect();
                 keys.sort();
 
                 for key in keys {
-                    let value = &data[key];
-                    println!("{:<20} | {:<20}", key, value);
+                    println!("{:<20} | {:<20}", key, data[key]);
                 }
             }
-            Some(_) => println!("(No variables found in file)"),
-            None => {
-                let status = self
-                    .get_error()
-                    .map(|e| format!("ERROR ({})", e))
-                    .unwrap_or_else(|| "NOT PARSED".to_string());
-                println!("Status: {}", status);
-            }
         }
+
         println!("{}", "-".repeat(43));
     }
 
     fn new<P: AsRef<Path>>(file_path: P, is_debug: bool) -> Self {
-        EnvParser {
+        Self {
             file_path: file_path.as_ref().to_path_buf(),
             env_contents: None,
             is_debug,
-            last_error: None,
         }
     }
 
-    fn parse(&mut self) {
-        let mut file = match File::open(&self.file_path) {
-            Ok(f) => f,
-            Err(e) => {
-                if self.is_debug {
-                    println!("Error opening file: {e}");
-                }
-                self.env_contents = None;
-                self.last_error = Some(Box::new(e));
-                return;
+    fn parse(&mut self) -> Result<(), Box<dyn Error>> {
+        let mut file = File::open(&self.file_path).map_err(|e| {
+            if self.is_debug {
+                eprintln!("DEBUG: Failed to open {:?}: {}", self.file_path, e);
             }
-        };
+            e
+        })?;
 
         let mut contents = String::new();
-        if let Err(e) = file.read_to_string(&mut contents) {
+        file.read_to_string(&mut contents).map_err(|e| {
             if self.is_debug {
-                println!("Error reading file: {e}");
+                eprintln!("DEBUG: Failed to read {:?}: {}", self.file_path, e);
             }
-            self.env_contents = None;
-            self.last_error = Some(Box::new(e));
-            return;
-        }
+            e
+        })?;
 
         let mut data: HashMap<String, String> = HashMap::new();
         for line in contents.lines() {
@@ -225,6 +204,7 @@ impl EnvParser {
         }
 
         self.env_contents = Some(data);
+        Ok(())
     }
 
     fn get(&self, key: &str) -> Option<&String> {
@@ -245,8 +225,8 @@ impl EnvParser {
 // which will output the contents if found
 impl std::fmt::Display for EnvParser {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "EnvParser: (file: {})\n", self.file_path.display())?;
-        println!("{}", "-".repeat(43));
+        writeln!(f, "EnvParser: (file: {})", self.file_path.display())?;
+        writeln!(f, "{}", "-".repeat(43))?;
 
         match &self.env_contents {
             Some(data) if !data.is_empty() => {
@@ -257,14 +237,10 @@ impl std::fmt::Display for EnvParser {
                 }
             }
             Some(_) => {
-                writeln!(f, "Status: Parsed, but no keys found.")?;
+                writeln!(f, "(no variables found in file)")?;
             }
             None => {
-                if let Some(err) = self.get_error() {
-                    writeln!(f, "Status: Error - {}", err)?;
-                } else {
-                    writeln!(f, "Status: Not yet parsed.")?;
-                }
+                writeln!(f, "status: uninitialized")?;
             }
         }
 
@@ -285,9 +261,26 @@ mod tests {
     }
 
     #[test]
+    fn test_missing_file() {
+        let result = EnvParser::from_file("this_file_does_not_exist.env", false);
+        assert!(result.is_err());
+
+        let err: Box<dyn Error> = result.unwrap_err();
+        assert!(err.to_string().contains("No such file or directory"));
+    }
+
+    #[test]
+    fn test_valid_file() {
+        let file = create_test_env("PORT=8080");
+        let parser = EnvParser::from_file(file.path(), false).expect("Failed to parse");
+        assert_eq!(parser.get_int::<i32>("PORT"), Some(8080));
+    }
+
+    #[test]
     fn test_case_integers() {
         let file: NamedTempFile = create_test_env("port=8080\ninvalidations=\"18\"");
-        let parser: EnvParser = EnvParser::from_file(file.path(), true);
+        let parser: EnvParser =
+            EnvParser::from_file(file.path(), true).expect("Failed to load env file");
 
         assert_eq!(parser.get_int::<i32>("port"), Some(8080));
         assert_eq!(parser.get_int::<i32>("invalidations"), Some(18));
@@ -296,7 +289,8 @@ mod tests {
     #[test]
     fn test_case_floats() {
         let file: NamedTempFile = create_test_env("exchange_rate=16.2\ndivisions=\"13.1\"");
-        let parser: EnvParser = EnvParser::from_file(file.path(), true);
+        let parser: EnvParser =
+            EnvParser::from_file(file.path(), true).expect("Failed to load env file");
 
         assert_eq!(parser.get_float::<f64>("exchange_rate"), Some(16.2));
         assert_eq!(parser.get_int::<f64>("divisions"), Some(13.1));
@@ -306,7 +300,8 @@ mod tests {
     fn test_case_bools() {
         let file: NamedTempFile =
             create_test_env("has_data=yes\nis_male=no\nis_debug=true\nhas_active_users=\"no\"");
-        let parser: EnvParser = EnvParser::from_file(file.path(), true);
+        let parser: EnvParser =
+            EnvParser::from_file(file.path(), true).expect("Failed to load env file");
 
         assert_eq!(parser.get_bool("has_data"), Some(true));
         assert_eq!(parser.get_bool("is_male"), Some(false));
@@ -317,7 +312,8 @@ mod tests {
     #[test]
     fn test_case_string() {
         let file: NamedTempFile = create_test_env("first_name=mike\nlast_name=dotnet");
-        let parser: EnvParser = EnvParser::from_file(file.path(), false);
+        let parser: EnvParser =
+            EnvParser::from_file(file.path(), false).expect("Failed to load env file");
 
         assert_eq!(parser.get_str("first_name"), Some("mike".to_string()));
         assert_eq!(parser.get_str("last_name"), Some("dotnet".to_string()));
@@ -327,7 +323,8 @@ mod tests {
     fn test_case_insensitivity() {
         let file: NamedTempFile =
             create_test_env("port=8080\nAPI_KEY=secret123\nEXCHANGE_RATE=12.2\nIS_DEBUG=false");
-        let parser = EnvParser::from_file(file.path(), false);
+        let parser: EnvParser =
+            EnvParser::from_file(file.path(), false).expect("Failed to load env file");
 
         assert_eq!(parser.get_int::<i32>("port"), Some(8080));
         assert_eq!(parser.get_str("api_key"), Some("secret123".to_string()));
@@ -340,7 +337,8 @@ mod tests {
         let file = create_test_env(
             "FLAGS=[run,build,test]\nMETADATA={version:1.0, env:prod, is_debug: true}",
         );
-        let parser = EnvParser::from_file(file.path(), false);
+        let parser: EnvParser =
+            EnvParser::from_file(file.path(), false).expect("Failed to load env file");
 
         let list = parser.get_list("FLAGS").unwrap();
         assert_eq!(list, vec!["run", "build", "test"]);
@@ -354,7 +352,8 @@ mod tests {
     #[test]
     fn test_get_value_anyvalue() {
         let file = create_test_env("IS_ACTIVE=true\nTIMEOUT=30.5");
-        let parser = EnvParser::from_file(file.path(), false);
+        let parser: EnvParser =
+            EnvParser::from_file(file.path(), false).expect("Failed to load env file");
 
         match parser.get_value("IS_ACTIVE", Types::Bool) {
             Some(AnyValue::Bool(b)) => assert!(b),
@@ -377,17 +376,11 @@ mod tests {
             RAW=no_quotes
         ",
         );
-        let parser = EnvParser::from_file(file.path(), false);
+        let parser: EnvParser =
+            EnvParser::from_file(file.path(), false).expect("Failed to load env file.");
 
         assert_eq!(parser.get_str("NAME").unwrap(), "Rust Parser");
         assert_eq!(parser.get_str("DESC").unwrap(), "A simple tool");
         assert_eq!(parser.get_str("RAW").unwrap(), "no_quotes");
-    }
-
-    #[test]
-    fn test_missing_file() {
-        let parser = EnvParser::from_file("this_file_does_not_exist.env", false);
-        assert!(parser.get_error().is_some());
-        assert!(parser.get_data().is_none());
     }
 }

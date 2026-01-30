@@ -61,28 +61,28 @@ DATABASE={host:localhost, port:5432, user:admin}
 
 ```rust
 use env_parser_rs::{EnvParser, Types};
+use std::error::Error;
 
-fn main() {
-    // 1. Initialize and parse immediately
-    let parser = EnvParser::from_file("app.conf", true);
+fn main() -> Result<(), Box<dyn Error>> {
+    let parser = EnvParser::from_file("app.conf", true)?;
 
-    // 2. Simple Scalars
-    let port = parser.get_int::<i32>("PORT").expect("Port is required");
-    let is_enabled = parser.get_bool("ENABLE_LOGS").unwrap_or(false);
+    let port: i32 = parser.get_int("PORT").expect("port is required");
+    let is_enabled: bool = parser.get_bool("ENABLE_LOGS").unwrap_or(false);
     
-    // 3. Working with Lists
     if let Some(ips) = parser.get_list("ALLOWED_IPS") {
-        println!("Whitelist size: {}", ips.len());
+        println!("whitelist size: {}", ips.len());
     }
 
-    // 4. Working with Dictionaries
     if let Some(db) = parser.get_dict("DATABASE") {
-        let db_host = db.get("host").unwrap();
-        println!("Connecting to: {}", db_host);
+        let db_host = db.get("host").ok_or("database host is missing")?;
+        println!("connecting to: {}", db_host);
     }
 
-    // 5. Visualize everything
+    if let Some(val) = parser.get_value("TIMEOUT", Types::Float) {
+        println!("parsed value: {:?}", val);
+    }
     parser.print_contents();
+    Ok(())
 }
 ```
 
